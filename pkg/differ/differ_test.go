@@ -17,7 +17,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(src, 1)
 		dstChunkMap := NewChunksMapFromReader(dst, 1)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 1, len(changes))
@@ -47,7 +47,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(src, 1)
 		dstChunkMap := NewChunksMapFromReader(dst, 1)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 1, len(changes))
@@ -77,7 +77,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(src, 1)
 		dstChunkMap := NewChunksMapFromReader(dst, 1)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 3, len(changes))
@@ -117,7 +117,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(src, 1)
 		dstChunkMap := NewChunksMapFromReader(dst, 1)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 2, len(changes))
@@ -153,7 +153,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(src, 1)
 		dstChunkMap := NewChunksMapFromReader(dst, 1)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 5, len(changes))
@@ -198,6 +198,57 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		}
 	})
 
+	t.Run("includeUnchangedChunks option is enabled", func(t *testing.T) {
+		src := strings.NewReader("abc")
+		dst := strings.NewReader("abxcd")
+
+		srcChunkMap := NewChunksMapFromReader(src, 1)
+		dstChunkMap := NewChunksMapFromReader(dst, 1)
+
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, true)
+		sort.Sort(changes)
+
+		assert.Equal(t, 5, len(changes))
+
+		changelist := []Change{
+			{
+				Operation: Unchanged,
+				From:      0,
+				Bytes:     []byte("a"),
+			},
+			{
+				Operation: Unchanged,
+				From:      1,
+				Bytes:     []byte("b"),
+			},
+			{
+				Operation: Move,
+				From:      2,
+				To:        3,
+				Bytes:     []byte("c"),
+			},
+			{
+				Operation: Add,
+				To:        4,
+				Bytes:     []byte("d"),
+			},
+			{
+				Operation: Add,
+				To:        2,
+				Bytes:     []byte("x"),
+			},
+		}
+
+		for i, expectedChange := range changelist {
+			change := changes[i]
+
+			assert.Equal(t, expectedChange.Operation, change.Operation)
+			assert.Equal(t, expectedChange.From, change.From)
+			assert.Equal(t, expectedChange.To, change.To)
+			assert.Equal(t, expectedChange.Bytes, change.Bytes)
+		}
+	})
+
 	t.Run("file diff with arbitrary chunk size", func(t *testing.T) {
 		t.Skip()
 		threeKbs := 3 * 1024
@@ -207,7 +258,7 @@ func TestDiffer_CalculateChanges(t *testing.T) {
 		srcChunkMap := NewChunksMapFromReader(srcFile, threeKbs)
 		dstChunkMap := NewChunksMapFromReader(dstFile, threeKbs)
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap)
+		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
 		sort.Sort(changes)
 
 		assert.Equal(t, 14, len(changes))

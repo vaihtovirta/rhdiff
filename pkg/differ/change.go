@@ -4,6 +4,9 @@ package differ
 type OperationType string
 
 const (
+	// Unchanged defines enum for UNCHANGED operation
+	Unchanged OperationType = "UNCHANGED"
+
 	// Add defines enum for ADD operation
 	Add OperationType = "ADD"
 
