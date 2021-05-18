@@ -35,30 +35,29 @@ Basic comparison of two strings split into one byte chunks
 package main
 
 import (
+	"bytes"
 	"fmt"
-	"strings"
 
 	"rhdiff/pkg/differ"
 )
 
 const chunkSizeBytes = 3
-const includeUnchangedChunks = false
 
 func main() {
 	src := bytes.NewReader([]byte("abcxyzfoo"))
 	dst := bytes.NewReader([]byte("abc12xyzfo"))
 
-	srcChunks := Split(src, chunkSizeBytes)
+	srcChunks := differ.Split(src, chunkSizeBytes)
 
-	changes := CalculateDelta(srcChunks, dst, chunkSizeBytes)
+	changes := differ.CalculateDelta(srcChunks, dst, chunkSizeBytes)
 
 	for _, change := range changes {
 		fmt.Printf(
-			"operation: %s, from %d; to %d; text: %s\n",
+			"operation: %s, srcOffset %d; dstOffset %d; data: %s\n",
 			change.Operation,
-			change.From,
-			change.To,
-			string(change.Bytes),
+			change.SrcOffset,
+			change.DstOffset,
+			string(change.Data),
 		)
 	}
 }
