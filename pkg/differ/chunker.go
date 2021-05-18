@@ -1,50 +1,24 @@
 package differ
 
 import (
-	"bufio"
 	"crypto/sha256"
+	"hash/adler32"
 	"io"
 	"log"
 )
 
 // Chunk represents a chunk of data with sha sum and the reference to its index in the original input
 type Chunk struct {
-	Bytes []byte
-	Index int
-	Sum   [sha256.Size]byte
+	Data      []byte
+	Offset    int
+	StrongSum [sha256.Size]byte
+	WeakSum   uint32
 }
 
-// ChunkMap represents map between chunk's sum and the Chunk itself
-type ChunkMap map[[sha256.Size]byte]Chunk
-
-// NewChunksMap creates a new ChunkMap from the given byte chunks
-func NewChunksMap(byteChunks [][]byte) ChunkMap {
-	chunksMap := make(ChunkMap)
-
-	for i, byteChunk := range byteChunks {
-		sum := sha256.Sum256(byteChunk)
-
-		chunksMap[sum] = Chunk{
-			Bytes: byteChunk,
-			Index: i,
-			Sum:   sum,
-		}
-	}
-
-	return chunksMap
-}
-
-// NewChunksMap creates a new ChunkMap from the given IO reader and chunk size in bytes
-func NewChunksMapFromReader(r io.Reader, chunkSizeBytes int) ChunkMap {
-	reader := bufio.NewReader(r)
-	chunks := Split(reader, chunkSizeBytes)
-
-	return NewChunksMap(chunks)
-}
-
-// Split splits the input into byte chunks of given size
-func Split(reader io.Reader, chunkSizeBytes int) [][]byte {
-	chunks := make([][]byte, 0)
+// Split splits the reader into chunks of specified length
+func Split(reader io.Reader, chunkSizeBytes int) []Chunk {
+	chunks := make([]Chunk, 0)
+	i := 0
 
 	for {
 		buf := make([]byte, chunkSizeBytes)
@@ -67,7 +41,16 @@ func Split(reader io.Reader, chunkSizeBytes int) [][]byte {
 			log.Fatal(err)
 		}
 
-		chunks = append(chunks, buf)
+		chunk := Chunk{
+			Data:      buf,
+			Offset:    i,
+			WeakSum:   adler32.Checksum(buf),
+			StrongSum: sha256.Sum256(buf),
+		}
+
+		chunks = append(chunks, chunk)
+
+		i += chunkSizeBytes
 	}
 
 	return chunks

@@ -1,293 +1,213 @@
 package differ
 
 import (
+	"bytes"
 	"os"
-	"sort"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+type testCases []struct {
+	name      string
+	chunkSize int
+	src       []byte
+	dst       []byte
+	changes   []Change
+}
+
 func TestDiffer_CalculateChanges(t *testing.T) {
-	t.Run("empty source", func(t *testing.T) {
-		src := strings.NewReader("")
-		dst := strings.NewReader("x")
+	loremSrc, _ := os.ReadFile("testdata/lorem_src.txt")
+	loremDst, _ := os.ReadFile("testdata/lorem_dst.txt")
 
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
-
-		assert.Equal(t, 1, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Add,
-				To:        0,
-				Bytes:     []byte("x"),
+	cases := testCases{
+		{
+			name:      "empty source",
+			chunkSize: 3,
+			src:       []byte(""),
+			dst:       []byte("abc"),
+			changes: []Change{
+				{
+					Operation: Add,
+					SrcOffset: 0,
+					DstOffset: 0,
+					Data:      []byte("abc"),
+				},
 			},
-		}
-
-		for i, expectedChange := range changelist {
-			change := changes[i]
-
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
-
-	t.Run("empty destination", func(t *testing.T) {
-		src := strings.NewReader("x")
-		dst := strings.NewReader("")
-
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
-
-		assert.Equal(t, 1, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Delete,
-				From:      0,
-				Bytes:     []byte("x"),
+		},
+		{
+			name:      "empty destination",
+			chunkSize: 3,
+			src:       []byte("abc"),
+			dst:       []byte(""),
+			changes: []Change{
+				{
+					Operation: Delete,
+					Data:      []byte("abc"),
+				},
 			},
-		}
-
-		for i, expectedChange := range changelist {
-			change := changes[i]
-
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
-
-	t.Run("existing chunks have been changed and new chunks have been added", func(t *testing.T) {
-		src := strings.NewReader("abc")
-		dst := strings.NewReader("xbcd")
-
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
-
-		assert.Equal(t, 3, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Delete,
-				From:      0,
-				Bytes:     []byte("a"),
+		},
+		{
+			name:      "existing chunks have been changed and new chunks have been added",
+			chunkSize: 3,
+			src:       []byte("abcxyzfoo"),
+			dst:       []byte("abc12xyzfo"),
+			changes: []Change{
+				{
+					Operation: Equal,
+					Data:      []byte("abc"),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 3,
+					DstOffset: 5,
+					Data:      []byte("xyz"),
+				},
+				{
+					Operation: Add,
+					DstOffset: 3,
+					Data:      []byte("12"),
+				},
+				{
+					Operation: Add,
+					DstOffset: 8,
+					Data:      []byte("fo"),
+				},
+				{
+					Operation: Delete,
+					SrcOffset: 6,
+					Data:      []byte("foo"),
+				},
 			},
-			{
-				Operation: Add,
-				To:        3,
-				Bytes:     []byte("d"),
+		},
+		{
+			name:      "existing chunk has been removed",
+			chunkSize: 3,
+			src:       []byte("abcxyzfoo"),
+			dst:       []byte("abcfoo"),
+			changes: []Change{
+				{
+					Operation: Equal,
+					Data:      []byte("abc"),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 6,
+					DstOffset: 3,
+					Data:      []byte("foo"),
+				},
+				{
+					Operation: Delete,
+					SrcOffset: 3,
+					Data:      []byte("xyz"),
+				},
 			},
-			{
-				Operation: Add,
-				To:        0,
-				Bytes:     []byte("x"),
+		},
+		{
+			name:      "text files comparison",
+			chunkSize: 64,
+			src:       loremSrc,
+			dst:       loremDst,
+			changes: []Change{
+				{
+					Operation: Move,
+					DstOffset: 49,
+					Data:      []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla n"),
+				},
+				{
+					Operation: Add,
+					Data:      []byte("Proin finibus ullamcorper ante sit amet egestas. "),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 64,
+					DstOffset: 113,
+					Data:      []byte("isl enim, consectetur quis quam consequat, pharetra tempus enim."),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 128,
+					DstOffset: 177,
+					Data:      []byte(" Fusce iaculis libero vitae ipsum accumsan efficitur. Fusce iacu"),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 192,
+					DstOffset: 241,
+					Data:      []byte("lis est et justo sollicitudin, sed porttitor augue sagittis. Mau"),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 320,
+					DstOffset: 463,
+					Data:      []byte("molestie nisl elit, suscipit egestas ex aliquam ac. Donec dignis"),
+				},
+				{
+					Operation: Add,
+					DstOffset: 305,
+					Data:      []byte("ris aliquam nisl nibh, sed tempus magna venenatis ac. Nulla ex metus, malesuada eget ultricies vel, fermentum quis nisl. Etiam ac venenatis tellus. Curabitur "),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 384,
+					DstOffset: 527,
+					Data:      []byte("sim, mauris nec malesuada pellentesque, ipsum sem porttitor est,"),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 448,
+					DstOffset: 591,
+					Data:      []byte(" quis laoreet urna orci a leo. Cras tincidunt porttitor sapien, "),
+				},
+				{
+					Operation: Move,
+					SrcOffset: 640,
+					DstOffset: 714,
+					Data:      []byte("."),
+				},
+				{
+					Operation: Add,
+					DstOffset: 655,
+					Data:      []byte("quis cursus metus pulvinar id. Pellentesque nec mollis eros"),
+				},
+				{
+					Operation: Delete,
+					SrcOffset: 256,
+					Data:      []byte("ris aliquam nisl nibh, sed tempus magna venenatis ac. Curabitur "),
+				},
+				{
+					Operation: Delete,
+					SrcOffset: 512,
+					Data:      []byte("quis cursus metus pulvinar id. Pellentesque nec mollis eros. Fus"),
+				},
+				{
+					Operation: Delete,
+					SrcOffset: 576,
+					Data:      []byte("ce sagittis vehicula ligula, nec ullamcorper sapien sagittis non"),
+				},
 			},
-		}
+		},
+	}
 
-		for i, expectedChange := range changelist {
-			change := changes[i]
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := bytes.NewReader(c.src)
+			dst := bytes.NewReader(c.dst)
 
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
+			srcChunks := Split(src, c.chunkSize)
 
-	t.Run("existing chunk has been removed", func(t *testing.T) {
-		src := strings.NewReader("abc")
-		dst := strings.NewReader("ac")
+			changes := CalculateDelta(srcChunks, dst, c.chunkSize)
 
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
+			assert.Equal(t, len(c.changes), len(changes))
 
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
+			for i, expectedChange := range c.changes {
+				change := changes[i]
 
-		assert.Equal(t, 2, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Delete,
-				From:      1,
-				Bytes:     []byte("b"),
-			},
-			{
-				Operation: Move,
-				From:      2,
-				To:        1,
-				Bytes:     []byte("c"),
-			},
-		}
-
-		for i, expectedChange := range changelist {
-			change := changes[i]
-
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
-
-	t.Run("new chunks have been inserted between existing ones", func(t *testing.T) {
-		src := strings.NewReader("abc")
-		dst := strings.NewReader("axybkc")
-
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
-
-		assert.Equal(t, 5, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Move,
-				From:      1,
-				To:        3,
-				Bytes:     []byte("b"),
-			},
-			{
-				Operation: Move,
-				From:      2,
-				To:        5,
-				Bytes:     []byte("c"),
-			},
-			{
-				Operation: Add,
-				To:        4,
-				Bytes:     []byte("k"),
-			},
-			{
-				Operation: Add,
-				To:        1,
-				Bytes:     []byte("x"),
-			},
-			{
-				Operation: Add,
-				To:        2,
-				Bytes:     []byte("y"),
-			},
-		}
-
-		for i, expectedChange := range changelist {
-			change := changes[i]
-
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
-
-	t.Run("includeUnchangedChunks option is enabled", func(t *testing.T) {
-		src := strings.NewReader("abc")
-		dst := strings.NewReader("abxcd")
-
-		srcChunkMap := NewChunksMapFromReader(src, 1)
-		dstChunkMap := NewChunksMapFromReader(dst, 1)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, true)
-		sort.Sort(changes)
-
-		assert.Equal(t, 5, len(changes))
-
-		changelist := []Change{
-			{
-				Operation: Unchanged,
-				From:      0,
-				Bytes:     []byte("a"),
-			},
-			{
-				Operation: Unchanged,
-				From:      1,
-				Bytes:     []byte("b"),
-			},
-			{
-				Operation: Move,
-				From:      2,
-				To:        3,
-				Bytes:     []byte("c"),
-			},
-			{
-				Operation: Add,
-				To:        4,
-				Bytes:     []byte("d"),
-			},
-			{
-				Operation: Add,
-				To:        2,
-				Bytes:     []byte("x"),
-			},
-		}
-
-		for i, expectedChange := range changelist {
-			change := changes[i]
-
-			assert.Equal(t, expectedChange.Operation, change.Operation)
-			assert.Equal(t, expectedChange.From, change.From)
-			assert.Equal(t, expectedChange.To, change.To)
-			assert.Equal(t, expectedChange.Bytes, change.Bytes)
-		}
-	})
-
-	t.Run("file diff with arbitrary chunk size", func(t *testing.T) {
-		t.Skip()
-		threeKbs := 3 * 1024
-		srcFile, _ := os.Open("testdata/lorem_15kb_src.txt")
-		dstFile, _ := os.Open("testdata/lorem_15kb_dst.txt")
-
-		srcChunkMap := NewChunksMapFromReader(srcFile, threeKbs)
-		dstChunkMap := NewChunksMapFromReader(dstFile, threeKbs)
-
-		changes := CalculateDelta(srcChunkMap, dstChunkMap, false)
-		sort.Sort(changes)
-
-		assert.Equal(t, 14, len(changes))
-
-		assertions := []struct {
-			operation OperationType
-			text      string
-		}{
-			{Delete, "Nulla urna eros, sodales a dui quis, fermentum lectus"},
-			{Delete, "Ut tincidunt ligula in tellus venenatis matt"},
-			{Add, "Maecenas convallis rhoncus sapien posuere ru"},
-			{Delete, "Suspendisse lacinia, lectus non semper maximus, massa dolor commodo orci"},
-			{Delete, "Cras arcu est, aliquet et elit sit amet"},
-			{Add, "Nunc vulputate varius dui"},
-			{Delete, "Vivamus rhoncus nulla id augue vene"},
-			{Add, "Aenean lobortis, felis sed pellentesque pretium"},
-			{Delete, "In sit amet leo et urna dictum pretium"},
-			{Delete, "Ut condimentum nibh massa"},
-			{Add, "Sed blandit, ipsum ut suscipit imperdiet"},
-			{Add, "Mauris vitae ante vitae tortor hendrerit interd"},
-			{Add, "In hac habitasse platea dictumst"},
-			{Add, "Fusce sed mauris sit amet ipsum hendrerit di"},
-		}
-
-		for i, assertion := range assertions {
-			change := changes[i]
-
-			assert.Equal(t, assertion.operation, change.Operation)
-			assert.Contains(t, string(change.Bytes), assertion.text)
-		}
-	})
+				assert.Equal(t, expectedChange.Operation, change.Operation)
+				assert.Equal(t, expectedChange.SrcOffset, change.SrcOffset)
+				assert.Equal(t, expectedChange.DstOffset, change.DstOffset)
+				assert.Equal(t, expectedChange.Data, change.Data)
+			}
+		})
+	}
 }

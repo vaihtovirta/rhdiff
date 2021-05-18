@@ -4,8 +4,8 @@ package differ
 type OperationType string
 
 const (
-	// Unchanged defines enum for UNCHANGED operation
-	Unchanged OperationType = "UNCHANGED"
+	// Equal defines enum for EQUAL operation
+	Equal OperationType = "EQUAL"
 
 	// Add defines enum for ADD operation
 	Add OperationType = "ADD"
@@ -20,25 +20,7 @@ const (
 // Change represents a single change
 type Change struct {
 	Operation OperationType
-	From      int
-	To        int
-	Bytes     []byte
-}
-
-// Delta represents a list of changes
-type Delta []Change
-
-// Len returns length of the change slice
-func (d Delta) Len() int {
-	return len(d)
-}
-
-// Less compares two change structs by their string representation
-func (d Delta) Less(i, j int) bool {
-	return string(d[i].Bytes) < string(d[j].Bytes)
-}
-
-// Swap swaps two change structs
-func (d Delta) Swap(i, j int) {
-	d[i], d[j] = d[j], d[i]
+	SrcOffset int
+	DstOffset int
+	Data      []byte
 }
